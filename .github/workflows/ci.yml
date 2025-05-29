@@ -1,0 +1,40 @@
+name: Continuous Integration
+
+on:
+  push:
+    paths:
+      - domain/**
+      - esp32s3/**
+      - .github/workflows/rust_ci.yml
+
+env:
+  CARGO_TERM_COLOR: always
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  rust-checks:
+    name: Rust Checks
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        action:
+          - command: build
+            args: --release --features default
+          - command: fmt
+            args: --all -- --check --color always
+          - command: clippy
+            args: --features default --workspace -- -D warnings
+          - command: test
+            args: -- --nocapture
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: 1.87.0
+          profile: minimal
+          override: true
+      - name: Run command
+        run: cargo ${{ matrix.action.command }} ${{ matrix.action.args }}"

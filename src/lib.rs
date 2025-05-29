@@ -11,22 +11,7 @@
 //! - Round-robin scheduling of tasks.
 //! - Simple sleep functionality using `core::time::Duration`.
 //!
-//! # Example
-//! ```
-//! use ato::{Spawner, sleep};
-//! use core::time::Duration;
-//!
-//! // Create a new spawner
-//! let mut spawner<8> = Spawner::new();
-//!
-//! // Spawn a task that sleeps for 100 milliseconds
-//! spawner.spawn(async {
-//!    sleep(Duration::from_secs(1), get_current_test_time_duration).await;
-//! }).unwrap();
-//!
-//! // Run all tasks until they are done
-//! spawner.run_until_all_done().unwrap();
-//! ```
+//! Examples can be found in the tests, demonstrating how to use the `Spawner` and `sleep` functionality.
 
 #![no_std]
 
@@ -209,9 +194,6 @@ mod tests {
 
     use super::*;
 
-    static SPAWNER: Spawner<4> = Spawner::new();
-    static Q: Q2<u8> = Q2::new();
-
     // --- Time source for `std` test environments ---
     // We need a static `Instant` to serve as our epoch for calculating monotonic time.
     // `std::sync::OnceLock` initializes this safely for concurrent tests (though these are single-threaded).
@@ -233,6 +215,8 @@ mod tests {
 
     #[test]
     fn test_spawner_sleep() {
+        static SPAWNER: Spawner<8> = Spawner::new();
+
         // Initialize the epoch at the start of tests that use it.
         // This ensures a consistent time base for each test run if tests run sequentially
         // or if the OnceLock hasn't been initialized yet.
@@ -253,6 +237,9 @@ mod tests {
 
     #[test]
     fn test_spawner_queues() {
+        static Q: Q2<u8> = Q2::new();
+        static SPAWNER: Spawner<4> = Spawner::new();
+
         let _ = get_test_epoch();
 
         if let Err(_) = SPAWNER.spawn(async move {
