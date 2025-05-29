@@ -28,4 +28,4 @@ jobs:
           profile: minimal
           override: true
       - name: Run command
-        run: cargo ${{ matrix.action.command }} ${{ matrix.action.args }}"
+        run: cargo ${{ matrix.action.command }} ${{ matrix.action.args }}
