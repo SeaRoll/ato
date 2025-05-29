@@ -24,7 +24,7 @@ Add ATO to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-ato = "1.0.1" # Replace with the desired version
+ato = "1.0.2" # Replace with the desired version
 ```
 
 Ensure you have an allocator set up if you're in a no_std environment, as ATO uses Box for tasks.
@@ -55,12 +55,11 @@ fn get_platform_time() -> Duration {
         Duration::from_nanos(FAKE_TIME)
     }
 }
-// --- End of platform-specific time source ---
 
 fn main() -> Result<(), Error> {
-    // Create a new spawner with a default capacity for 8 tasks.
-    // You can specify a different capacity, e.g., Spawner::<16>::new().
-    let mut spawner: Spawner<8> = Spawner::new();
+    // Creates a spawner.
+    // NOTE: The size must be power of two, e.g., 2, 4, 8, 16, etc.
+    static spawner: Spawner<8> = Spawner::new();
 
     // Spawn a task that sleeps for 1 second
     spawner.spawn(async {
@@ -76,8 +75,12 @@ fn main() -> Result<(), Error> {
     spawner.spawn(async {
         sleep(Duration::from_millis(500), get_platform_time).await;
         // println!("Task 2: Slept for 500 milliseconds!");
-        sleep(Duration::from_millis(500), get_platform_time).await;
-        // println!("Task 2: Slept for another 500 milliseconds!");
+
+        // We can create another task inside this one
+        spawner.spawn(async {
+            sleep(Duration::from_secs(2), get_platform_time).await;
+            // println!("Task 3: Slept for 2 seconds!");
+        }).unwrap();
     })?;
 
     // Run all tasks until they are done
