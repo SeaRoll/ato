@@ -1,15 +1,6 @@
 name: Continuous Integration
 
-on:
-  push:
-    paths:
-      - domain/**
-      - esp32s3/**
-      - .github/workflows/rust_ci.yml
-
-env:
-  CARGO_TERM_COLOR: always
-  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+on: push
 
 jobs:
   rust-checks:
