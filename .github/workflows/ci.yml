@@ -11,11 +11,11 @@ jobs:
       matrix:
         action:
           - command: build
-            args: --release --features default
+            args: --release
           - command: fmt
             args: --all -- --check --color always
           - command: clippy
-            args: --features default --workspace -- -D warnings
+            args: --workspace -- -D warnings
           - command: test
             args: -- --nocapture
     steps:

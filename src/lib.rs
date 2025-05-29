@@ -61,6 +61,12 @@ pub struct Spawner<const N: usize, Q = heapless::mpmc::MpMcQueue<Task, N>> {
     waker: Waker,
 }
 
+impl<const N: usize> Default for Spawner<N> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<const N: usize> Spawner<N> {
     /// Creates a new, empty `Spawner`.
     pub const fn new() -> Self {
@@ -109,7 +115,7 @@ impl<const N: usize> Spawner<N> {
                     // println!("Task is pending, re-queuing...");
                     // Task is not yet complete. Push it to the back of the queue
                     // to be polled again later. This implements a simple round-robin scheduling.
-                    if let Err(_) = self.tasks.enqueue(task) {
+                    if self.tasks.enqueue(task).is_err() {
                         return Err(Error::TaskQueueFail);
                     }
                 }
@@ -136,7 +142,7 @@ impl DurationSleep {
     pub fn new(duration: Duration, time_fn: fn() -> Duration) -> Self {
         DurationSleep {
             start_time: None,
-            duration: duration,
+            duration,
             time_fn,
         }
     }
@@ -176,7 +182,7 @@ impl Future for DurationSleep {
 /// # Arguments
 /// * `duration`: The `core::time::Duration` to sleep for.
 /// * `time_fn`: A function pointer `fn() -> u64` that returns the current
-///              monotonic time in nanoseconds. The user must provide this.
+///   monotonic time in nanoseconds. The user must provide this.
 ///
 /// This function is `no_std` compatible (it only uses `core` types),
 /// assuming the provided `time_fn` is also `no_std` compatible.
