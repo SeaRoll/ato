@@ -1,0 +1,32 @@
+name: Continuous Integration
+
+on: push
+
+jobs:
+  rust-checks:
+    name: Rust Checks
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        action:
+          - command: build
+            args: --release
+          - command: fmt
+            args: --all -- --check --color always
+          - command: clippy
+            args: --workspace -- -D warnings
+          - command: test
+            args: -- --nocapture
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: 1.87.0
+          profile: minimal
+          components: rustfmt, clippy
+          override: true
+      - name: Run command
+        run: cargo ${{ matrix.action.command }} ${{ matrix.action.args }}
