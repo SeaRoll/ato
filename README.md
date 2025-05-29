@@ -24,8 +24,7 @@ Add ATO to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-ato = "0.1.0" # Replace with the desired version
-heapless = "0.7" # ATO uses heapless for its task queue
+ato = "1.0.1" # Replace with the desired version
 ```
 
 Ensure you have an allocator set up if you're in a no_std environment, as ATO uses Box for tasks.
