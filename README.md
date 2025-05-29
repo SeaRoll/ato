@@ -60,7 +60,7 @@ fn get_platform_time() -> Duration {
 fn main() -> Result<(), Error> {
     // Create a new spawner with a default capacity for 8 tasks.
     // You can specify a different capacity, e.g., Spawner::<16>::new().
-    let mut spawner = Spawner::<8>::new();
+    let mut spawner: Spawner<8> = Spawner::new();
 
     // Spawn a task that sleeps for 1 second
     spawner.spawn(async {

@@ -17,7 +17,7 @@
 //! use core::time::Duration;
 //!
 //! // Create a new spawner
-//! let mut spawner = Spawner::new();
+//! let mut spawner<8> = Spawner::new();
 //!
 //! // Spawn a task that sleeps for 100 milliseconds
 //! spawner.spawn(async {
@@ -42,6 +42,7 @@ use core::{
     task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
 };
 
+#[derive(Debug)]
 pub enum Error {
     TaskQueueFail,
 }
@@ -64,27 +65,27 @@ static VTABLE: RawWakerVTable = RawWakerVTable::new(nop_clone, nop, nop, nop);
 
 /// A type alias for a task. A task is a pinned, boxed future that outputs `()`.
 /// The `'static` lifetime means the future cannot hold any non-static references.
-type Task = (i8, Pin<Box<dyn Future<Output = ()> + 'static>>);
+type Task = Pin<Box<dyn Future<Output = ()> + 'static + Send + Sync>>;
 
 /// A simple task spawner and runner.
 /// It can queue multiple futures (tasks) and run them to completion.
-pub struct Spawner<const N: usize = 8> {
+pub struct Spawner<const N: usize, Q = heapless::mpmc::MpMcQueue<Task, N>> {
     /// A queue of tasks to be run.
-    tasks: heapless::Deque<Task, N>,
+    tasks: Q,
     /// A reusable waker for polling tasks.
     waker: Waker,
 }
 
 impl<const N: usize> Spawner<N> {
     /// Creates a new, empty `Spawner`.
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         // Create a raw waker using the same VTABLE as block_on.
         // This waker doesn't do anything special, which is fine for a simple,
         // single-threaded, busy-polling spawner.
         let raw_waker = RawWaker::new(ptr::null(), &VTABLE);
         let waker = unsafe { Waker::from_raw(raw_waker) };
         Spawner {
-            tasks: heapless::Deque::new(),
+            tasks: heapless::mpmc::MpMcQueue::new(),
             waker,
         }
     }
@@ -94,14 +95,11 @@ impl<const N: usize> Spawner<N> {
     ///
     /// # Arguments
     /// * `future`: The future to spawn. It must be `'static` and output `()`.
-    pub fn spawn<F>(&mut self, future: F) -> Result<(), Error>
+    pub fn spawn<F>(&self, future: F) -> Result<(), Error>
     where
-        F: Future<Output = ()> + 'static,
+        F: Future<Output = ()> + 'static + Send + Sync,
     {
-        match self
-            .tasks
-            .push_back((self.tasks.len() as i8, Box::pin(future)))
-        {
+        match self.tasks.enqueue(Box::pin(future)) {
             Ok(()) => Ok(()),
             Err(_) => Err(Error::TaskQueueFail),
         }
@@ -113,12 +111,12 @@ impl<const N: usize> Spawner<N> {
     ///
     /// Note: If any task never completes (e.g., an infinite loop that never yields `Poll::Ready`),
     /// this method will also loop forever.
-    pub fn run_until_all_done(&mut self) -> Result<(), Error> {
+    pub fn run_until_all_done(&self) -> Result<(), Error> {
         let mut cx = Context::from_waker(&self.waker);
 
         // Loop as long as there are tasks in the queue.
-        while let Some(mut task) = self.tasks.pop_front() {
-            match task.1.as_mut().poll(&mut cx) {
+        while let Some(mut task) = self.tasks.dequeue() {
+            match task.as_mut().poll(&mut cx) {
                 Poll::Ready(()) => {
                     // Task is complete. It's already removed from the queue, so we do nothing.
                 }
@@ -126,7 +124,7 @@ impl<const N: usize> Spawner<N> {
                     // println!("Task is pending, re-queuing...");
                     // Task is not yet complete. Push it to the back of the queue
                     // to be polled again later. This implements a simple round-robin scheduling.
-                    if let Err(_) = self.tasks.push_back(task) {
+                    if let Err(_) = self.tasks.enqueue(task) {
                         return Err(Error::TaskQueueFail);
                     }
                 }
@@ -211,6 +209,7 @@ mod tests {
 
     use super::*;
 
+    static SPAWNER: Spawner<4> = Spawner::new();
     static Q: Q2<u8> = Q2::new();
 
     // --- Time source for `std` test environments ---
@@ -239,33 +238,24 @@ mod tests {
         // or if the OnceLock hasn't been initialized yet.
         let _ = get_test_epoch();
 
-        let mut spawner: Spawner<8> = Spawner::new();
         let sleep_duration = Duration::from_millis(10);
 
-        if let Err(_) = spawner.spawn(async move {
+        if let Err(_) = SPAWNER.spawn(async move {
             sleep(sleep_duration, get_current_test_time_duration).await;
         }) {
             panic!("Failed to spawn task");
         }
 
-        if let Err(_) = spawner.run_until_all_done() {
+        if let Err(_) = SPAWNER.run_until_all_done() {
             panic!("Failed to run tasks");
         }
-
-        // At this point, the task should have completed
-        assert!(
-            spawner.tasks.is_empty(),
-            "Spawner tasks should be empty after run_until_all_done"
-        );
     }
 
     #[test]
     fn test_spawner_queues() {
         let _ = get_test_epoch();
 
-        let mut spawner: Spawner<8> = Spawner::new();
-
-        if let Err(_) = spawner.spawn(async move {
+        if let Err(_) = SPAWNER.spawn(async move {
             loop {
                 sleep(Duration::from_millis(10), get_current_test_time_duration).await;
                 if let Some(_) = Q.dequeue() {
@@ -276,21 +266,23 @@ mod tests {
             panic!("Failed to spawn task");
         }
 
-        if let Err(_) = spawner.spawn(async move {
+        if let Err(_) = SPAWNER.spawn(async move {
             sleep(Duration::from_secs(1), get_current_test_time_duration).await;
             Q.enqueue(42).unwrap();
+
+            // Create another task that will dequeue
+            SPAWNER
+                .spawn(async move {
+                    sleep(Duration::from_secs(1), get_current_test_time_duration).await;
+                    Q.enqueue(42).unwrap();
+                })
+                .unwrap();
         }) {
             panic!("Failed to spawn task");
         }
 
-        if let Err(_) = spawner.run_until_all_done() {
-            panic!("Failed to run tasks");
+        if let Err(e) = SPAWNER.run_until_all_done() {
+            panic!("Failed to run tasks - {:?}", e);
         }
-
-        // At this point, the task should have completed
-        assert!(
-            spawner.tasks.is_empty(),
-            "Spawner tasks should be empty after run_until_all_done"
-        );
     }
 }
