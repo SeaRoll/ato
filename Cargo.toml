@@ -1,0 +1,10 @@
+[package]
+name = "ato"
+version = "1.0.0"
+edition = "2021"
+license = "MIT"
+description = "A very minimal no-std async runtime"
+repository = "https://github.com/SeaRoll/ato"
+
+[dependencies]
+heapless = "0.8.0"
