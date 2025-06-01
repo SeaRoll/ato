@@ -11,7 +11,7 @@
 //! - Round-robin scheduling of tasks.
 //! - Simple sleep functionality using `core::time::Duration`.
 //!
-//! Examples can be found in the tests, demonstrating how to use the `Spawner` and `sleep` functionality.
+//! Examples can be found in the examples folder, demonstrating how to use the `Spawner` and `sleep` functionality.
 
 #![no_std]
 
@@ -181,7 +181,7 @@ impl Future for DurationSleep {
 ///
 /// # Arguments
 /// * `duration`: The `core::time::Duration` to sleep for.
-/// * `time_fn`: A function pointer `fn() -> u64` that returns the current
+/// * `time_fn`: A function pointer `fn() -> Duration` that returns the current
 ///   monotonic time in nanoseconds. The user must provide this.
 ///
 /// This function is `no_std` compatible (it only uses `core` types),

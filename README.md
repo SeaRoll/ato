@@ -24,7 +24,7 @@ Add ATO to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-ato = "1.0.2" # Replace with the desired version
+ato = "1.0.3" # Replace with the desired version
 ```
 
 Ensure you have an allocator set up if you're in a no_std environment, as ATO uses Box for tasks.
@@ -35,20 +35,10 @@ Here's a basic example of how to use ATO:
 
 
 ```rust
-#![no_std]
-extern crate alloc;
-
-use ato::{Spawner, sleep, Error};
+use ato::{sleep, Spawner};
 use core::time::Duration;
 
-// --- You need to provide a time source function ---
-// This function must return the current monotonic time as a Duration.
-// The exact implementation will depend on your hardware/platform.
-// For example, it might read a hardware timer.
 fn get_platform_time() -> Duration {
-    // Replace this with your actual time-keeping logic
-    // For demonstration, let's assume a dummy incrementing counter in nanoseconds.
-    // In a real scenario, this would interface with a hardware timer.
     static mut FAKE_TIME: u64 = 0;
     unsafe {
         FAKE_TIME += 10_000_000; // Increment by 10ms for example
@@ -56,38 +46,29 @@ fn get_platform_time() -> Duration {
     }
 }
 
-fn main() -> Result<(), Error> {
+fn main() {
     // Creates a spawner.
     // NOTE: The size must be power of two, e.g., 2, 4, 8, 16, etc.
-    static spawner: Spawner<8> = Spawner::new();
+    static SPAWNER: Spawner<8> = Spawner::new();
 
-    // Spawn a task that sleeps for 1 second
-    spawner.spawn(async {
-        // The first argument is the duration to sleep.
-        // The second argument is a function pointer to your time source.
-        sleep(Duration::from_secs(1), get_platform_time).await;
-        // In a real application, you might print to a console or toggle an LED.
-        // For no_std, printing requires a platform-specific implementation.
-        // println!("Task 1: Slept for 1 second!");
-    })?;
+    SPAWNER
+        .spawn(async {
+            sleep(Duration::from_secs(1), get_platform_time).await;
+        })
+        .unwrap();
 
     // Spawn another task
-    spawner.spawn(async {
-        sleep(Duration::from_millis(500), get_platform_time).await;
-        // println!("Task 2: Slept for 500 milliseconds!");
+    SPAWNER
+        .spawn(async {
+            sleep(Duration::from_millis(500), get_platform_time).await;
+            SPAWNER
+                .spawn(async {
+                    sleep(Duration::from_secs(2), get_platform_time).await;
+                })
+                .unwrap();
+        })
+        .unwrap();
 
-        // We can create another task inside this one
-        spawner.spawn(async {
-            sleep(Duration::from_secs(2), get_platform_time).await;
-            // println!("Task 3: Slept for 2 seconds!");
-        }).unwrap();
-    })?;
-
-    // Run all tasks until they are done
-    // This will block and poll tasks in a round-robin fashion.
-    spawner.run_until_all_done()?;
-
-    // println!("All tasks completed!");
-    Ok(())
+    SPAWNER.run_until_all_done().unwrap();
 }
 ```
