@@ -1,34 +1,25 @@
-use ato::{sleep, Spawner};
-use core::time::Duration;
+use ato::Spawner;
 
-fn get_platform_time() -> Duration {
-    static mut FAKE_TIME: u64 = 0;
-    unsafe {
-        FAKE_TIME += 10_000_000; // Increment by 10ms for example
-        Duration::from_nanos(FAKE_TIME)
-    }
-}
+const SPAWNER_SIZE: usize = 4; // Must be a power of two, e.g., 2, 4, 8, 16, etc.
+static SPAWNER: Spawner<SPAWNER_SIZE> = Spawner::new();
 
 fn main() {
-    // Creates a spawner.
-    // NOTE: The size must be power of two, e.g., 2, 4, 8, 16, etc.
-    static SPAWNER: Spawner<8> = Spawner::new();
-
     SPAWNER
         .spawn(async {
-            sleep(Duration::from_secs(1), get_platform_time).await;
+            println!("Task 1 started");
         })
         .unwrap();
 
     // Spawn another task
     SPAWNER
         .spawn(async {
-            sleep(Duration::from_millis(500), get_platform_time).await;
+            println!("Task 2 started, spawning another task");
             SPAWNER
                 .spawn(async {
-                    sleep(Duration::from_secs(2), get_platform_time).await;
+                    println!("Task 2.1 started");
                 })
                 .unwrap();
+            println!("Task 2 completed");
         })
         .unwrap();
 
