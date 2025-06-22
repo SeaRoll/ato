@@ -190,13 +190,43 @@ pub fn sleep(duration: Duration, time_fn: fn() -> Duration) -> DurationSleep {
     DurationSleep::new(duration, time_fn)
 }
 
+/// A future that yields execution back to the scheduler once.
+/// This allows a task to voluntarily pause and let other tasks run.
+#[derive(Debug, Default)]
+pub struct YieldNow {
+    yielded: bool,
+}
+
+impl Future for YieldNow {
+    type Output = ();
+
+    fn poll(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
+        if self.yielded {
+            // We have already yielded once, so now we can complete.
+            Poll::Ready(())
+        } else {
+            // We have not yielded yet. Set the flag and return Pending.
+            // The executor will re-queue the task and poll it again later.
+            self.yielded = true;
+            Poll::Pending
+        }
+    }
+}
+
+/// Creates a future that will yield execution back to the scheduler once.
+///
+/// This allows a task to voluntarily pause and let other tasks run.
+pub fn yield_now() -> YieldNow {
+    YieldNow { yielded: false }
+}
+
 #[cfg(test)]
 mod tests {
     extern crate std;
 
-    use std::time::Instant;
-
+    use alloc::{sync::Arc, vec::Vec};
     use heapless::mpmc::Q2;
+    use std::{sync::Mutex, time::Instant};
 
     use super::*;
 
@@ -277,5 +307,46 @@ mod tests {
         if let Err(e) = SPAWNER.run_until_all_done() {
             panic!("Failed to run tasks - {:?}", e);
         }
+    }
+
+    #[test]
+    fn test_yield_now() {
+        static SPAWNER: Spawner<8> = Spawner::new();
+        let lock = Arc::new(Mutex::new(Vec::new()));
+
+        let lock_clone = lock.clone();
+        SPAWNER
+            .spawn(async move {
+                {
+                    let mut num = lock_clone.lock().unwrap();
+                    num.push(1);
+                }
+                yield_now().await; // Yield control back to the scheduler
+                {
+                    let mut num = lock_clone.lock().unwrap();
+                    num.push(3);
+                }
+            })
+            .unwrap();
+
+        let lock_clone = lock.clone();
+        SPAWNER
+            .spawn(async move {
+                {
+                    let mut num = lock_clone.lock().unwrap();
+                    num.push(2);
+                }
+            })
+            .unwrap();
+
+        SPAWNER.run_until_all_done().unwrap();
+
+        // check that the lock was accessed correctly
+        let num = lock.lock().unwrap();
+        assert_eq!(
+            *num,
+            Vec::from([1, 2, 3]),
+            "Lock was not accessed correctly"
+        );
     }
 }
