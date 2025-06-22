@@ -7,4 +7,4 @@ description = "A very minimal no-std async runtime"
 repository = "https://github.com/SeaRoll/ato"
 
 [dependencies]
-heapless = "0.8.0"
+heapless = { version = "0.8.0", features = ["mpmc_large"] }

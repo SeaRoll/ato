@@ -274,7 +274,7 @@ mod tests {
     #[test]
     fn test_spawner_queues() {
         static Q: Q2<u8> = Q2::new();
-        static SPAWNER: Spawner<4> = Spawner::new();
+        static SPAWNER: Spawner<512> = Spawner::new();
 
         let _ = get_test_epoch();
 
