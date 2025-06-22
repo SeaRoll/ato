@@ -12,7 +12,8 @@ It provides a basic task spawner and a round-robin scheduler to run `Future`s to
 * **Task Spawner:** Queue multiple asynchronous tasks.
 * **Round-Robin Scheduling:** Tasks are polled sequentially until completion.
 * **Simple Sleep Functionality:** Includes an async `sleep` function that requires a user-provided time source.
-* **Fixed-Size Task Queue:** Uses `heapless::Deque` for a statically-sized task queue, configurable at compile time.
+* **Fixed-Size Task Queue:** Uses `heapless::Q*` for a statically-sized task queue, configurable at compile time.
+* **Simple Yield Functionality:** Allows yielding control back to the scheduler, enabling cooperative multitasking.
 
 ## Motivation
 
@@ -24,7 +25,7 @@ Add ATO to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-ato = "1.0.3" # Replace with the desired version
+ato = "1.0.4" # Replace with the desired version
 ```
 
 Ensure you have an allocator set up if you're in a no_std environment, as ATO uses Box for tasks.
