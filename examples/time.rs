@@ -3,7 +3,6 @@ use core::time::Duration;
 use std::time::Instant;
 
 const SPAWNER_SIZE: usize = 2; // Must be a power of two, e.g., 2, 4, 8, 16, etc.
-static SPAWNER: Spawner<SPAWNER_SIZE> = Spawner::new();
 static TEST_EPOCH: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
 
 fn get_platform_time() -> Duration {
@@ -12,17 +11,17 @@ fn get_platform_time() -> Duration {
 }
 
 fn main() {
-    SPAWNER
-        .spawn(async {
-            let start = Instant::now();
-            sleep(Duration::from_millis(100), get_platform_time).await;
-            let elapsed = Instant::now().duration_since(start);
-            println!(
-                "Task 1 completed after {:?} milliseconds",
-                elapsed.as_millis()
-            );
-        })
-        .unwrap();
+    let spawner: Spawner<SPAWNER_SIZE> = Spawner::new();
+    let mut task = ato::task!({
+        let start = Instant::now();
+        sleep(Duration::from_millis(200), get_platform_time).await;
+        let elapsed = Instant::now().duration_since(start);
+        println!(
+            "Task 0 completed after {:?} milliseconds",
+            elapsed.as_millis()
+        );
+    });
+    spawner.spawn(&mut task).unwrap();
 
-    SPAWNER.run_until_all_done().unwrap();
+    spawner.run_until_all_done().unwrap();
 }
