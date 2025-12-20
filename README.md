@@ -22,13 +22,18 @@ In many `no_std` contexts, a full-fledged async runtime like Tokio or async-std 
 operating system features that aren't available. ATO aims to provide the bare essentials for cooperative 
 multitasking with futures in such environments.
 
+## Migration from V1 to V2
+The v2 release of ATO introduces breaking changes due to usage of no allocator required. This means that the `Spawner`
+is now not `'static` but rather scoped to the stack frame it is created in. This allows ATO to work in `no_alloc` environments.
+Please take a look at the example for how to create and use a `Spawner` in v2.
+
 ## Installation
 
 Add ATO to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-ato = "1.0.4" # Replace with the desired version
+ato = "2.0.0" # Replace with the desired version
 ```
 
 ## Usage
