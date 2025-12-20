@@ -1,24 +1,26 @@
-//! ATO: A simple task async runtime for no_std environments.
+//! ATO: A simple task async runtime for no_std environments with no alloc required.
 //!
 //! This library provides a basic task spawner and runner, allowing you to spawn
-//! futures and run them to completion in a round-robin fashion.
+//! futures and run them to completion in a queued manner (FIFO).
 //!
-//! It is designed to be used in environments without the standard library (`no_std`),
-//! making it suitable for embedded systems or other constrained environments.
+//! It is designed to be used in environments without the standard library (`no_std`) or no heap
+//! allocation support, making it suitable for embedded systems or other constrained environments.
 //!
 //! # Features
 //! - Task spawner that can queue multiple futures.
-//! - Round-robin scheduling of tasks.
+//! - FIFO scheduling of tasks.
 //! - Simple sleep functionality using `core::time::Duration`.
+//! - Simple yielding functionality to allow tasks to yield control back to the scheduler.
 //!
 //! Examples can be found in the examples folder, demonstrating how to use the `Spawner` and `sleep` functionality.
 
 #![no_std]
 
-extern crate alloc;
+mod sleep;
+mod yield_now;
 
-use alloc::boxed::Box;
-use core::time::Duration;
+pub use crate::sleep::sleep;
+pub use crate::yield_now::yield_now;
 
 use core::{
     future::Future,
@@ -27,52 +29,32 @@ use core::{
     task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
 };
 
+// --- ERROR & WAKER ---
 #[derive(Debug)]
 pub enum Error {
     TaskQueueFail,
 }
 
-// These functions and VTABLE are used to create a simple Waker
-// that doesn't actually do any waking. It's suitable for a
-// busy-looping executor like block_on or this simple Spawner.
 unsafe fn nop(_: *const ()) {}
-
 unsafe fn nop_clone(_data: *const ()) -> RawWaker {
-    // When cloning the waker, we effectively create a new one with the same null data and vtable.
     RawWaker::new(ptr::null(), &VTABLE)
 }
-
-// The VTABLE for our simple Waker.
-// The functions are: clone, wake, wake_by_ref, drop.
 static VTABLE: RawWakerVTable = RawWakerVTable::new(nop_clone, nop, nop, nop);
 
-// --- New Spawner Code ---
+// Task type alias
+type Task<'a> = Pin<&'a mut (dyn Future<Output = ()> + Send + Sync)>;
 
-/// A type alias for a task. A task is a pinned, boxed future that outputs `()`.
-/// The `'static` lifetime means the future cannot hold any non-static references.
-type Task = Pin<Box<dyn Future<Output = ()> + 'static + Send + Sync>>;
-
-/// A simple task spawner and runner.
-/// It can queue multiple futures (tasks) and run them to completion.
-pub struct Spawner<const N: usize, Q = heapless::mpmc::MpMcQueue<Task, N>> {
-    /// A queue of tasks to be run.
-    tasks: Q,
-    /// A reusable waker for polling tasks.
+/// A simple task spawner and runner for `no_std` environments.
+/// The `Spawner` can queue and run multiple tasks (futures) in a FIFO manner.
+/// # Type Parameters
+/// - `N`: The maximum number of tasks that can be queued. Must be a power of two (e.g., 2, 4, 8, 16, etc.).
+pub struct Spawner<'a, const N: usize> {
+    tasks: heapless::mpmc::MpMcQueue<Task<'a>, N>,
     waker: Waker,
 }
 
-impl<const N: usize> Default for Spawner<N> {
+impl<'a, const N: usize> Default for Spawner<'a, N> {
     fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl<const N: usize> Spawner<N> {
-    /// Creates a new, empty `Spawner`.
-    pub const fn new() -> Self {
-        // Create a raw waker using the same VTABLE as block_on.
-        // This waker doesn't do anything special, which is fine for a simple,
-        // single-threaded, busy-polling spawner.
         let raw_waker = RawWaker::new(ptr::null(), &VTABLE);
         let waker = unsafe { Waker::from_raw(raw_waker) };
         Spawner {
@@ -80,153 +62,59 @@ impl<const N: usize> Spawner<N> {
             waker,
         }
     }
+}
 
-    /// Spawns a new task.
-    /// The provided future will be boxed, pinned, and added to the task queue.
-    ///
-    /// # Arguments
-    /// * `future`: The future to spawn. It must be `'static` and output `()`.
-    pub fn spawn<F>(&self, future: F) -> Result<(), Error>
-    where
-        F: Future<Output = ()> + 'static + Send + Sync,
-    {
-        match self.tasks.enqueue(Box::pin(future)) {
+impl<'a, const N: usize> Spawner<'a, N> {
+    /// Spawns a task. Make sure to use the `task!` macro to pin the future to the stack.
+    pub fn spawn(
+        &self,
+        future: &'a mut (dyn Future<Output = ()> + Send + Sync),
+    ) -> Result<(), Error> {
+        // We re-pin the reference. This is safe because the reference we receive
+        // is already mutable and valid for 'a.
+        let pinned_task = unsafe { Pin::new_unchecked(future) };
+
+        match self.tasks.enqueue(pinned_task) {
             Ok(()) => Ok(()),
             Err(_) => Err(Error::TaskQueueFail),
         }
     }
 
-    /// Runs all spawned tasks to completion.
-    /// This method will block and continuously poll tasks in a round-robin fashion
-    /// until all tasks have completed.
-    ///
-    /// Note: If any task never completes (e.g., an infinite loop that never yields `Poll::Ready`),
-    /// this method will also loop forever.
+    /// Runs tasks until all are completed.
     pub fn run_until_all_done(&self) -> Result<(), Error> {
         let mut cx = Context::from_waker(&self.waker);
 
-        // Loop as long as there are tasks in the queue.
         while let Some(mut task) = self.tasks.dequeue() {
             match task.as_mut().poll(&mut cx) {
-                Poll::Ready(()) => {
-                    // Task is complete. It's already removed from the queue, so we do nothing.
-                }
+                Poll::Ready(()) => {}
                 Poll::Pending => {
-                    // println!("Task is pending, re-queuing...");
-                    // Task is not yet complete. Push it to the back of the queue
-                    // to be polled again later. This implements a simple round-robin scheduling.
                     if self.tasks.enqueue(task).is_err() {
                         return Err(Error::TaskQueueFail);
                     }
                 }
             }
         }
-
         Ok(())
     }
 }
 
-#[derive(Debug)]
-pub struct DurationSleep {
-    start_time: Option<Duration>,
-    duration: Duration,
-    time_fn: fn() -> Duration,
-}
-
-impl DurationSleep {
-    /// Creates a new `DurationSleep` future.
-    ///
-    /// # Arguments
-    /// * `duration`: The minimum duration for which to sleep.
-    /// * `time_fn`: A function that returns the current monotonic time in nanoseconds.
-    pub fn new(duration: Duration, time_fn: fn() -> Duration) -> Self {
-        DurationSleep {
-            start_time: None,
-            duration,
-            time_fn,
-        }
-    }
-}
-
-impl Future for DurationSleep {
-    type Output = ();
-
-    fn poll(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let current_time = (self.time_fn)();
-
-        let start_time = match self.start_time {
-            Some(time) => time,
-            None => {
-                self.as_mut().start_time = Some(current_time);
-                current_time
-            }
-        };
-        if self.duration == Duration::ZERO {
-            return Poll::Ready(());
-        }
-
-        let elapsed = current_time.saturating_sub(start_time);
-
-        if elapsed >= self.duration {
-            // The sleep duration has passed.
-            Poll::Ready(())
-        } else {
-            // Still sleeping, return Pending.
-            Poll::Pending
-        }
-    }
-}
-
-/// Creates a future that will "sleep" for the specified `Duration`.
-///
-/// # Arguments
-/// * `duration`: The `core::time::Duration` to sleep for.
-/// * `time_fn`: A function pointer `fn() -> Duration` that returns the current
-///   monotonic time in nanoseconds. The user must provide this.
-///
-/// This function is `no_std` compatible (it only uses `core` types),
-/// assuming the provided `time_fn` is also `no_std` compatible.
-pub fn sleep(duration: Duration, time_fn: fn() -> Duration) -> DurationSleep {
-    DurationSleep::new(duration, time_fn)
-}
-
-/// A future that yields execution back to the scheduler once.
-/// This allows a task to voluntarily pause and let other tasks run.
-#[derive(Debug, Default)]
-pub struct YieldNow {
-    yielded: bool,
-}
-
-impl Future for YieldNow {
-    type Output = ();
-
-    fn poll(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
-        if self.yielded {
-            // We have already yielded once, so now we can complete.
-            Poll::Ready(())
-        } else {
-            // We have not yielded yet. Set the flag and return Pending.
-            // The executor will re-queue the task and poll it again later.
-            self.yielded = true;
-            Poll::Pending
-        }
-    }
-}
-
-/// Creates a future that will yield execution back to the scheduler once.
-///
-/// This allows a task to voluntarily pause and let other tasks run.
-pub fn yield_now() -> YieldNow {
-    YieldNow { yielded: false }
+/// task! macro is used to create a pinned async block.
+/// It pins the async block to the stack, making it suitable for spawning
+/// in the ATO runtime.
+#[macro_export]
+macro_rules! task {
+    ( $($body:tt)* ) => {
+        core::pin::pin!(async move { $($body)* })
+    };
 }
 
 #[cfg(test)]
 mod tests {
     extern crate std;
 
-    use alloc::{sync::Arc, vec::Vec};
+    use core::time::Duration;
     use heapless::mpmc::Q2;
-    use std::{sync::Mutex, time::Instant};
+    use std::{sync::Arc, sync::Mutex, time::Instant, vec::Vec};
 
     use super::*;
 
@@ -249,9 +137,13 @@ mod tests {
         Instant::now().duration_since(epoch)
     }
 
+    async fn hello() {
+        std::println!("Hello, world!");
+    }
+
     #[test]
     fn test_spawner_sleep() {
-        static SPAWNER: Spawner<8> = Spawner::new();
+        let spawner: Spawner<8> = Spawner::default();
 
         // Initialize the epoch at the start of tests that use it.
         // This ensures a consistent time base for each test run if tests run sequentially
@@ -260,13 +152,16 @@ mod tests {
 
         let sleep_duration = Duration::from_millis(10);
 
-        if let Err(_) = SPAWNER.spawn(async move {
+        let mut pinned_future = task!({
             sleep(sleep_duration, get_current_test_time_duration).await;
-        }) {
+            hello().await;
+        });
+
+        if let Err(_) = spawner.spawn(&mut pinned_future) {
             panic!("Failed to spawn task");
         }
 
-        if let Err(_) = SPAWNER.run_until_all_done() {
+        if let Err(_) = spawner.run_until_all_done() {
             panic!("Failed to run tasks");
         }
     }
@@ -274,72 +169,66 @@ mod tests {
     #[test]
     fn test_spawner_queues() {
         static Q: Q2<u8> = Q2::new();
-        static SPAWNER: Spawner<512> = Spawner::new();
-
+        let spawner: Spawner<2> = Spawner::default();
         let _ = get_test_epoch();
 
-        if let Err(_) = SPAWNER.spawn(async move {
+        let mut dequeue_future = task!({
             loop {
                 sleep(Duration::from_millis(10), get_current_test_time_duration).await;
                 if let Some(_) = Q.dequeue() {
                     break;
                 }
             }
-        }) {
-            panic!("Failed to spawn task");
-        }
+        });
 
-        if let Err(_) = SPAWNER.spawn(async move {
+        spawner
+            .spawn(&mut dequeue_future)
+            .expect("Failed to spawn task");
+
+        let mut enqueue_future = task!({
             sleep(Duration::from_secs(1), get_current_test_time_duration).await;
             Q.enqueue(42).unwrap();
+        });
+        spawner
+            .spawn(&mut enqueue_future)
+            .expect("Failed to spawn task");
 
-            // Create another task that will dequeue
-            SPAWNER
-                .spawn(async move {
-                    sleep(Duration::from_secs(1), get_current_test_time_duration).await;
-                    Q.enqueue(42).unwrap();
-                })
-                .unwrap();
-        }) {
-            panic!("Failed to spawn task");
-        }
-
-        if let Err(e) = SPAWNER.run_until_all_done() {
-            panic!("Failed to run tasks - {:?}", e);
-        }
+        spawner.run_until_all_done().expect("Failed to run tasks");
     }
 
     #[test]
     fn test_yield_now() {
-        static SPAWNER: Spawner<8> = Spawner::new();
+        let spawner: Spawner<8> = Spawner::default();
         let lock = Arc::new(Mutex::new(Vec::new()));
 
         let lock_clone = lock.clone();
-        SPAWNER
-            .spawn(async move {
-                {
-                    let mut num = lock_clone.lock().unwrap();
-                    num.push(1);
-                }
-                yield_now().await; // Yield control back to the scheduler
-                {
-                    let mut num = lock_clone.lock().unwrap();
-                    num.push(3);
-                }
-            })
-            .unwrap();
+        let mut first_future = task!({
+            {
+                let mut num = lock_clone.lock().unwrap();
+                num.push(1);
+            }
+            yield_now().await; // Yield control back to the scheduler
+            {
+                let mut num = lock_clone.lock().unwrap();
+                num.push(3);
+            }
+        });
 
         let lock_clone = lock.clone();
-        SPAWNER
-            .spawn(async move {
-                {
-                    let mut num = lock_clone.lock().unwrap();
-                    num.push(2);
-                }
-            })
-            .unwrap();
+        let mut second_future = task!({
+            {
+                let mut num = lock_clone.lock().unwrap();
+                num.push(2);
+            }
+        });
 
-        SPAWNER.run_until_all_done().unwrap();
+        spawner
+            .spawn(&mut first_future)
+            .expect("Failed to spawn first future");
+        spawner
+            .spawn(&mut second_future)
+            .expect("Failed to spawn second future");
+        spawner.run_until_all_done().unwrap();
 
         // check that the lock was accessed correctly
         let num = lock.lock().unwrap();
