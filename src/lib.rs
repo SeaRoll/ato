@@ -1,4 +1,4 @@
-//! ATO: A simple task async runtime for no_std environments with not alloc required either.
+//! ATO: A simple task async runtime for no_std environments with no alloc required.
 //!
 //! This library provides a basic task spawner and runner, allowing you to spawn
 //! futures and run them to completion in a queued manner (FIFO).
@@ -65,7 +65,7 @@ impl<'a, const N: usize> Default for Spawner<'a, N> {
 }
 
 impl<'a, const N: usize> Spawner<'a, N> {
-    /// Spawns a task. make sure to use the `task!` macro to pin the future to the stack.
+    /// Spawns a task. Make sure to use the `task!` macro to pin the future to the stack.
     pub fn spawn(
         &self,
         future: &'a mut (dyn Future<Output = ()> + Send + Sync),
