@@ -11,7 +11,7 @@ fn get_platform_time() -> Duration {
 }
 
 fn main() {
-    let spawner: Spawner<SPAWNER_SIZE> = Spawner::new();
+    let spawner: Spawner<SPAWNER_SIZE> = Spawner::default();
     let mut task = ato::task!({
         let start = Instant::now();
         sleep(Duration::from_millis(200), get_platform_time).await;

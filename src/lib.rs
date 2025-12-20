@@ -53,9 +53,8 @@ pub struct Spawner<'a, const N: usize> {
     waker: Waker,
 }
 
-impl<'a, const N: usize> Spawner<'a, N> {
-    /// Creates a new `Spawner` instance.
-    pub fn new() -> Self {
+impl<'a, const N: usize> Default for Spawner<'a, N> {
+    fn default() -> Self {
         let raw_waker = RawWaker::new(ptr::null(), &VTABLE);
         let waker = unsafe { Waker::from_raw(raw_waker) };
         Spawner {
@@ -63,7 +62,9 @@ impl<'a, const N: usize> Spawner<'a, N> {
             waker,
         }
     }
+}
 
+impl<'a, const N: usize> Spawner<'a, N> {
     /// Spawns a task. make sure to use the `task!` macro to pin the future to the stack.
     pub fn spawn(
         &self,
@@ -142,7 +143,7 @@ mod tests {
 
     #[test]
     fn test_spawner_sleep() {
-        let spawner: Spawner<8> = Spawner::new();
+        let spawner: Spawner<8> = Spawner::default();
 
         // Initialize the epoch at the start of tests that use it.
         // This ensures a consistent time base for each test run if tests run sequentially
@@ -168,7 +169,7 @@ mod tests {
     #[test]
     fn test_spawner_queues() {
         static Q: Q2<u8> = Q2::new();
-        let spawner: Spawner<2> = Spawner::new();
+        let spawner: Spawner<2> = Spawner::default();
         let _ = get_test_epoch();
 
         let mut dequeue_future = task!({
@@ -197,7 +198,7 @@ mod tests {
 
     #[test]
     fn test_yield_now() {
-        let spawner: Spawner<8> = Spawner::new();
+        let spawner: Spawner<8> = Spawner::default();
         let lock = Arc::new(Mutex::new(Vec::new()));
 
         let lock_clone = lock.clone();
