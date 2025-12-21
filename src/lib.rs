@@ -41,9 +41,10 @@ unsafe fn nop_clone(_data: *const ()) -> RawWaker {
 }
 static VTABLE: RawWakerVTable = RawWakerVTable::new(nop_clone, nop, nop, nop);
 
+/// A type alias for a pinned future that outputs `()`.
 type Task<'a> = Pin<&'a mut (dyn Future<Output = ()> + Send + Sync)>;
 
-// Task type alias
+/// A handle to a task (future) that can be spawned in the ATO runtime.
 pub struct TaskHandle<'a> {
     inner: Task<'a>,
 }
