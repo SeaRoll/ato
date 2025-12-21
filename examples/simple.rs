@@ -7,10 +7,10 @@ fn main() {
     let spawner: Spawner<SPAWNER_SIZE> = Spawner::default();
 
     // create a simple task that prints a message
-    let mut task = ato::task!({
-        println!("Task 1 started");
+    ato::task!(task, {
+        println!("Hello, World!");
     });
-    spawner.spawn(&mut task).unwrap();
+    spawner.spawn(task).unwrap();
 
     // run until all tasks are done running
     spawner.run_until_all_done().unwrap();
