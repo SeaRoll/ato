@@ -1,4 +1,3 @@
-use ato::{sleep, Spawner};
 use core::time::Duration;
 use std::time::Instant;
 
@@ -11,17 +10,17 @@ fn get_platform_time() -> Duration {
 }
 
 fn main() {
-    let spawner: Spawner<SPAWNER_SIZE> = Spawner::default();
-    ato::task!(task, {
+    let spawner: ato::Spawner<SPAWNER_SIZE> = ato::Spawner::default();
+    ato::spawn_task!(spawner, res, {
         let start = Instant::now();
-        sleep(Duration::from_millis(200), get_platform_time).await;
+        ato::sleep(Duration::from_millis(200), get_platform_time).await;
         let elapsed = Instant::now().duration_since(start);
         println!(
             "Task 0 completed after {:?} milliseconds",
             elapsed.as_millis()
         );
     });
-    spawner.spawn(task).unwrap();
+    res.unwrap();
 
     spawner.run_until_all_done().unwrap();
 }
