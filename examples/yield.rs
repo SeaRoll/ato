@@ -1,11 +1,9 @@
 use std::sync::{Arc, Mutex};
 
-use ato::{yield_now, Spawner};
-
 const SPAWNER_SIZE: usize = 4; // Must be a power of two, e.g., 2, 4, 8, 16, etc.
 
 fn main() {
-    let spawner: Spawner<SPAWNER_SIZE> = Spawner::default();
+    let spawner: ato::Spawner<SPAWNER_SIZE> = ato::Spawner::default();
     let lock = Arc::new(Mutex::new(Vec::new()));
     let lock_clone = lock.clone();
     ato::task!(task, {
@@ -13,7 +11,7 @@ fn main() {
             let mut num = lock_clone.lock().unwrap();
             num.push(1);
         }
-        yield_now().await; // Yield control back to the scheduler
+        ato::yield_now().await; // Yield control back to the scheduler
         {
             let mut num = lock_clone.lock().unwrap();
             num.push(3);

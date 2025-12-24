@@ -16,6 +16,7 @@
 
 #![no_std]
 
+pub mod channels;
 mod sleep;
 mod yield_now;
 
@@ -139,6 +140,25 @@ macro_rules! task {
         // 3. Create the handle with the user-provided name.
         // We assume TaskHandle::new is accessible here.
         let $name = $crate::TaskHandle::new(pinned_fut);
+    };
+}
+
+#[macro_export]
+macro_rules! spawn_task {
+    // Usage: task!(spawner, result, { async_code... });
+    ($spawner:expr, $result:ident, $body:expr) => {
+        // 1. Create the future variable in the CURRENT scope
+        let future = async move { $body };
+
+        // 2. Pin it. `core::pin::pin!` creates a `Pin<&mut T>`
+        // that borrows the local `future` variable we just created.
+        let pinned_fut = core::pin::pin!(future);
+
+        // 3. Create the handle.
+        let task_handle = $crate::TaskHandle::new(pinned_fut);
+
+        // 4. Spawn the task using the provided spawner.
+        let $result = $spawner.spawn(task_handle);
     };
 }
 
