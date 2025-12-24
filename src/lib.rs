@@ -126,7 +126,7 @@ impl<'a, const N: usize> Spawner<'a, N> {
 /// Macro to simplify spawning tasks with the `Spawner`.
 #[macro_export]
 macro_rules! spawn_task {
-    // Usage: task!(spawner, result, { async_code... });
+    // Usage: spawn_task!(spawner, result, { async_code... });
     ($spawner:expr, $result:ident, $body:expr) => {
         // 1. Create the future variable in the CURRENT scope
         let future = async move { $body };

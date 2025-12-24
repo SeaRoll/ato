@@ -114,10 +114,10 @@ pub fn new_channel<'a, T, const N: usize>(
     (Producer { queue }, Consumer { queue })
 }
 
-/// Channel macro creates a multi-producer, multi-consumer channel with the specified type and capacity.
+/// `channel!` macro creates a multi-producer, multi-consumer channel with the specified type and capacity.
 #[macro_export]
 macro_rules! channel {
-    // Usage: task!(task_variable_name, { async_code... });
+    // Usage: channel!(name, Type, Size);
     ($name:ident, $type:ty, $size:expr) => {
         let q = heapless::mpmc::MpMcQueue::<$type, $size>::new();
 
