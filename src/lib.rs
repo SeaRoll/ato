@@ -123,26 +123,7 @@ impl<'a, const N: usize> Spawner<'a, N> {
     }
 }
 
-/// task! macro is used to create a pinned async block.
-/// It pins the async block to the stack, making it suitable for spawning
-/// in the ATO runtime.
-#[macro_export]
-macro_rules! task {
-    // Usage: task!(task_variable_name, { async_code... });
-    ($name:ident, $body:expr) => {
-        // 1. Create the future variable in the CURRENT scope
-        let future = async move { $body };
-
-        // 2. Pin it. `core::pin::pin!` creates a `Pin<&mut T>`
-        // that borrows the local `future` variable we just created.
-        let pinned_fut = core::pin::pin!(future);
-
-        // 3. Create the handle with the user-provided name.
-        // We assume TaskHandle::new is accessible here.
-        let $name = $crate::TaskHandle::new(pinned_fut);
-    };
-}
-
+/// Macro to simplify spawning tasks with the `Spawner`.
 #[macro_export]
 macro_rules! spawn_task {
     // Usage: task!(spawner, result, { async_code... });
@@ -206,14 +187,11 @@ mod tests {
 
         let sleep_duration = Duration::from_millis(10);
 
-        task!(pinned_future, {
+        spawn_task!(spawner, res, {
             sleep(sleep_duration, get_current_test_time_duration).await;
             hello().await;
         });
-
-        if let Err(_) = spawner.spawn(pinned_future) {
-            panic!("Failed to spawn task");
-        }
+        res.expect("Failed to spawn task");
 
         if let Err(_) = spawner.run_until_all_done() {
             panic!("Failed to run tasks");
@@ -226,7 +204,7 @@ mod tests {
         let spawner: Spawner<2> = Spawner::default();
         let _ = get_test_epoch();
 
-        task!(dequeue_future, {
+        spawn_task!(spawner, res, {
             loop {
                 sleep(Duration::from_millis(10), get_current_test_time_duration).await;
                 if let Some(_) = Q.dequeue() {
@@ -234,14 +212,13 @@ mod tests {
                 }
             }
         });
+        res.expect("Failed to spawn task");
 
-        spawner.spawn(dequeue_future).expect("Failed to spawn task");
-
-        task!(enqueue_future, {
+        spawn_task!(spawner, res, {
             sleep(Duration::from_secs(1), get_current_test_time_duration).await;
             Q.enqueue(42).unwrap();
         });
-        spawner.spawn(enqueue_future).expect("Failed to spawn task");
+        res.expect("Failed to spawn task");
 
         spawner.run_until_all_done().expect("Failed to run tasks");
     }
@@ -252,7 +229,7 @@ mod tests {
         let lock = Arc::new(Mutex::new(Vec::new()));
 
         let lock_clone = lock.clone();
-        task!(first_future, {
+        spawn_task!(spawner, res, {
             {
                 let mut num = lock_clone.lock().unwrap();
                 num.push(1);
@@ -263,21 +240,16 @@ mod tests {
                 num.push(3);
             }
         });
+        res.expect("Failed to spawn task");
 
         let lock_clone = lock.clone();
-        task!(second_future, {
+        spawn_task!(spawner, res, {
             {
                 let mut num = lock_clone.lock().unwrap();
                 num.push(2);
             }
         });
-
-        spawner
-            .spawn(first_future)
-            .expect("Failed to spawn first future");
-        spawner
-            .spawn(second_future)
-            .expect("Failed to spawn second future");
+        res.expect("Failed to spawn task");
         spawner.run_until_all_done().unwrap();
 
         // check that the lock was accessed correctly

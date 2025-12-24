@@ -5,10 +5,10 @@ fn main() {
     let spawner: ato::Spawner<SPAWNER_SIZE> = ato::Spawner::default();
 
     // create a simple task that prints a message
-    ato::task!(task, {
+    ato::spawn_task!(spawner, res, {
         println!("Hello, World!");
     });
-    spawner.spawn(task).unwrap();
+    res.unwrap();
 
     // run until all tasks are done running
     spawner.run_until_all_done().unwrap();
