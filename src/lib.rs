@@ -30,7 +30,6 @@ use core::{
     task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
 };
 
-// --- ERROR & WAKER ---
 #[derive(Debug)]
 pub enum Error {
     TaskQueueFail,
@@ -42,7 +41,6 @@ unsafe fn nop_clone(_data: *const ()) -> RawWaker {
 }
 static VTABLE: RawWakerVTable = RawWakerVTable::new(nop_clone, nop, nop, nop);
 
-/// A type alias for a pinned future that outputs `()`.
 type Task<'a> = Pin<&'a mut (dyn Future<Output = ()> + Send + Sync)>;
 
 /// A handle to a task (future) that can be spawned in the ATO runtime.
@@ -126,19 +124,10 @@ impl<'a, const N: usize> Spawner<'a, N> {
 /// Macro to simplify spawning tasks with the `Spawner`.
 #[macro_export]
 macro_rules! spawn_task {
-    // Usage: spawn_task!(spawner, result, { async_code... });
     ($spawner:expr, $result:ident, $body:expr) => {
-        // 1. Create the future variable in the CURRENT scope
         let future = async move { $body };
-
-        // 2. Pin it. `core::pin::pin!` creates a `Pin<&mut T>`
-        // that borrows the local `future` variable we just created.
         let pinned_fut = core::pin::pin!(future);
-
-        // 3. Create the handle.
         let task_handle = $crate::TaskHandle::new(pinned_fut);
-
-        // 4. Spawn the task using the provided spawner.
         let $result = $spawner.spawn(task_handle);
     };
 }
@@ -154,9 +143,6 @@ mod tests {
     use super::*;
 
     // --- Time source for `std` test environments ---
-    // We need a static `Instant` to serve as our epoch for calculating monotonic time.
-    // `std::sync::OnceLock` initializes this safely for concurrent tests (though these are single-threaded).
-    // This is specifically for the test environment.
     static TEST_EPOCH: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
 
     /// Initializes (if not already) and returns the test's epoch Instant.
@@ -165,8 +151,6 @@ mod tests {
     }
 
     /// Returns the current monotonic time as a Duration since the test epoch.
-    /// This function is suitable for passing as `time_fn` to `sleep` in a `std` test environment.
-    /// It's a non-capturing function, so it can be cast to a `fn` pointer.
     fn get_current_test_time_duration() -> Duration {
         let epoch = get_test_epoch(); // Ensure epoch is initialized
         Instant::now().duration_since(epoch)
@@ -180,9 +164,6 @@ mod tests {
     fn test_spawner_sleep() {
         let spawner: Spawner<8> = Spawner::default();
 
-        // Initialize the epoch at the start of tests that use it.
-        // This ensures a consistent time base for each test run if tests run sequentially
-        // or if the OnceLock hasn't been initialized yet.
         let _ = get_test_epoch();
 
         let sleep_duration = Duration::from_millis(10);
