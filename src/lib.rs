@@ -17,6 +17,7 @@
 #![no_std]
 
 pub mod channels;
+pub mod interval;
 mod sleep;
 mod yield_now;
 
@@ -172,11 +173,8 @@ mod tests {
             sleep(sleep_duration, get_current_test_time_duration).await;
             hello().await;
         });
-        res.expect("Failed to spawn task");
-
-        if let Err(_) = spawner.run_until_all_done() {
-            panic!("Failed to run tasks");
-        }
+        assert!(res.is_ok());
+        assert!(spawner.run_until_all_done().is_ok());
     }
 
     #[test]
@@ -193,15 +191,14 @@ mod tests {
                 }
             }
         });
-        res.expect("Failed to spawn task");
+        assert!(res.is_ok());
 
         spawn_task!(spawner, res, {
             sleep(Duration::from_secs(1), get_current_test_time_duration).await;
             Q.enqueue(42).unwrap();
         });
-        res.expect("Failed to spawn task");
-
-        spawner.run_until_all_done().expect("Failed to run tasks");
+        assert!(res.is_ok());
+        assert!(spawner.run_until_all_done().is_ok());
     }
 
     #[test]
@@ -221,7 +218,7 @@ mod tests {
                 num.push(3);
             }
         });
-        res.expect("Failed to spawn task");
+        assert!(res.is_ok());
 
         let lock_clone = lock.clone();
         spawn_task!(spawner, res, {
@@ -230,8 +227,8 @@ mod tests {
                 num.push(2);
             }
         });
-        res.expect("Failed to spawn task");
-        spawner.run_until_all_done().unwrap();
+        assert!(res.is_ok());
+        assert!(spawner.run_until_all_done().is_ok());
 
         // check that the lock was accessed correctly
         let num = lock.lock().unwrap();
@@ -240,5 +237,33 @@ mod tests {
             Vec::from([1, 2, 3]),
             "Lock was not accessed correctly"
         );
+    }
+
+    #[test]
+    fn test_spawner_interval() {
+        let spawner: Spawner<8> = Spawner::default();
+
+        let _ = get_test_epoch();
+
+        let start_time = get_current_test_time_duration();
+
+        // Run interval task for 3 iterations (500 ms), with sleep in between, which
+        // should still be 1500 ms total.
+        spawn_task!(spawner, res, {
+            let mut interval = crate::interval::Interval::new(
+                Duration::from_millis(500),
+                get_current_test_time_duration,
+            );
+            for _ in 0..3 {
+                interval.tick().await;
+                // sleep for random duration less than the interval
+                sleep(Duration::from_millis(200), get_current_test_time_duration).await;
+            }
+        });
+        assert!(res.is_ok());
+        assert!(spawner.run_until_all_done().is_ok());
+
+        let elapsed = get_current_test_time_duration() - start_time;
+        assert!(elapsed <= Duration::from_millis(1550)); // with some margin
     }
 }
