@@ -13,7 +13,7 @@ fn main() {
     let start_time = get_platform_time();
     // Run interval task for 3 iterations (500 ms), with sleep in between, which
     // should still be 1500 ms total.
-    ato::spawn_task!(spawner, res, {
+    ato::spawn!(spawner, async {
         let mut interval =
             ato::interval::Interval::new(Duration::from_millis(500), get_platform_time);
         for _ in 0..3 {
@@ -22,7 +22,6 @@ fn main() {
             ato::sleep(Duration::from_millis(200), get_platform_time).await;
         }
     });
-    assert!(res.is_ok());
     assert!(spawner.run_until_all_done().is_ok());
 
     let elapsed = get_platform_time() - start_time;

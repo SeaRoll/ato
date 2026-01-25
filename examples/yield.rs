@@ -6,7 +6,7 @@ fn main() {
     let spawner: ato::Spawner<SPAWNER_SIZE> = ato::Spawner::default();
     let lock = Arc::new(Mutex::new(Vec::new()));
     let lock_clone = lock.clone();
-    ato::spawn_task!(spawner, res, {
+    ato::spawn!(spawner, async {
         {
             let mut num = lock_clone.lock().unwrap();
             num.push(1);
@@ -17,16 +17,14 @@ fn main() {
             num.push(3);
         }
     });
-    res.unwrap();
 
     let lock_clone = lock.clone();
-    ato::spawn_task!(spawner, res, {
+    ato::spawn!(spawner, async {
         {
             let mut num = lock_clone.lock().unwrap();
             num.push(2);
         }
     });
-    res.unwrap();
 
     spawner.run_until_all_done().unwrap();
 
