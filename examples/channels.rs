@@ -15,27 +15,21 @@ fn main() {
 
     // Consumer
     let consumer = hello.1.clone();
-    ato::spawn_task!(spawner, res, {
+    ato::spawn!(spawner, async {
         for _ in 0..5 {
             let msg = consumer.recv().await;
             println!("Received: {}", msg);
         }
     });
-    if let Err(e) = res {
-        panic!("Failed to spawn task: {:?}", e);
-    }
 
     // Producer
-    ato::spawn_task!(spawner, res, {
+    ato::spawn!(spawner, async {
         for i in 0..5 {
             println!("Sending: {}", i);
             hello.0.send(i).await;
             ato::yield_now().await;
         }
     });
-    if let Err(e) = res {
-        panic!("Failed to spawn task: {:?}", e);
-    }
 
     spawner.run_until_all_done().unwrap();
 }

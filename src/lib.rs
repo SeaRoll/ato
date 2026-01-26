@@ -123,13 +123,29 @@ impl<'a, const N: usize> Spawner<'a, N> {
 }
 
 /// Macro to simplify spawning tasks with the `Spawner`.
+///
+/// Returns a `Result<(), Error>` indicating success or failure of the spawn operation.
+/// If error return is not desired, consider using the `spawn!` macro instead.
 #[macro_export]
 macro_rules! spawn_task {
-    ($spawner:expr, $result:ident, $body:expr) => {
-        let future = async move { $body };
-        let pinned_fut = core::pin::pin!(future);
-        let task_handle = $crate::TaskHandle::new(pinned_fut);
-        let $result = $spawner.spawn(task_handle);
+    ($spawner:expr, $result:ident, $future:expr) => {
+        let future = $future;
+        let pinned = core::pin::pin!(future);
+        let handle = $crate::TaskHandle::new(pinned);
+        let $result = $spawner.spawn(handle);
+    };
+}
+
+/// Simplified spawning macro. Panics if the task queue is full.
+///
+/// If error handling is desired, consider using the `spawn_task!` macro instead.
+#[macro_export]
+macro_rules! spawn {
+    ($spawner:expr, $future:expr) => {
+        let future = $future;
+        let pinned = core::pin::pin!(future);
+        let handle = $crate::TaskHandle::new(pinned);
+        $spawner.spawn(handle).expect("Task queue full");
     };
 }
 
@@ -169,11 +185,10 @@ mod tests {
 
         let sleep_duration = Duration::from_millis(10);
 
-        spawn_task!(spawner, res, {
+        spawn!(spawner, async {
             sleep(sleep_duration, get_current_test_time_duration).await;
             hello().await;
         });
-        assert!(res.is_ok());
         assert!(spawner.run_until_all_done().is_ok());
     }
 
@@ -183,7 +198,7 @@ mod tests {
         let spawner: Spawner<2> = Spawner::default();
         let _ = get_test_epoch();
 
-        spawn_task!(spawner, res, {
+        spawn!(spawner, async {
             loop {
                 sleep(Duration::from_millis(10), get_current_test_time_duration).await;
                 if let Some(_) = Q.dequeue() {
@@ -191,13 +206,11 @@ mod tests {
                 }
             }
         });
-        assert!(res.is_ok());
 
-        spawn_task!(spawner, res, {
+        spawn!(spawner, async {
             sleep(Duration::from_secs(1), get_current_test_time_duration).await;
             Q.enqueue(42).unwrap();
         });
-        assert!(res.is_ok());
         assert!(spawner.run_until_all_done().is_ok());
     }
 
@@ -207,7 +220,7 @@ mod tests {
         let lock = Arc::new(Mutex::new(Vec::new()));
 
         let lock_clone = lock.clone();
-        spawn_task!(spawner, res, {
+        spawn!(spawner, async {
             {
                 let mut num = lock_clone.lock().unwrap();
                 num.push(1);
@@ -218,16 +231,14 @@ mod tests {
                 num.push(3);
             }
         });
-        assert!(res.is_ok());
 
         let lock_clone = lock.clone();
-        spawn_task!(spawner, res, {
+        spawn!(spawner, async {
             {
                 let mut num = lock_clone.lock().unwrap();
                 num.push(2);
             }
         });
-        assert!(res.is_ok());
         assert!(spawner.run_until_all_done().is_ok());
 
         // check that the lock was accessed correctly
@@ -249,7 +260,7 @@ mod tests {
 
         // Run interval task for 3 iterations (500 ms), with sleep in between, which
         // should still be 1500 ms total.
-        spawn_task!(spawner, res, {
+        spawn!(spawner, async {
             let mut interval = crate::interval::Interval::new(
                 Duration::from_millis(500),
                 get_current_test_time_duration,
@@ -260,7 +271,6 @@ mod tests {
                 sleep(Duration::from_millis(200), get_current_test_time_duration).await;
             }
         });
-        assert!(res.is_ok());
         assert!(spawner.run_until_all_done().is_ok());
 
         let elapsed = get_current_test_time_duration() - start_time;
